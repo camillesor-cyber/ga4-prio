@@ -589,25 +589,26 @@ function mergeAndParse(rawA, rawB, filename) {
       const row = raw[r]; if (!row) continue;
       const c0 = clean(row[colUrl]);
       const cc = clean(row[colComp] ?? '');
-      if (!c0 && cc && metricCol >= 0 && toNum(row[metricCol]) > 50) {
+      if (!c0 && cc && metricCol >= 0 && toNum(row[metricCol]) > 0) {
         const lbl = cc.toLowerCase();
-        const hasMonth = ['jan','fev','fév','mar','avr','mai','juin','juil','aou','aoû','sep','oct','nov','dec','déc'].some(m => lbl.includes(m));
+        const hasMonth = ['jan','fev','fév','feb','mar','avr','apr','mai','may','juin','jun','juil','jul','aou','aoû','aug','sep','oct','nov','dec','déc'].some(m => lbl.includes(m));
         if (hasMonth) {
           if (totV1 === null) { totV1 = colVues >= 0 ? toNum(row[colVues]) : 0; period1Label = cc.replace(/^['"]|['"]$/g,'').trim(); }
           else if (totV2 === null) { totV2 = colVues >= 0 ? toNum(row[colVues]) : 0; period2Label = cc.replace(/^['"]|['"]$/g,'').trim(); }
         }
       }
-      if (c0.startsWith('/') && cc.toLowerCase().includes('variation') && startRow === -1) startRow = r;
+      if (c0.startsWith('/') && (cc.toLowerCase().includes('variation') || cc === '% change') && startRow === -1) startRow = r;
     }
     if (startRow === -1) {
       for (let r = headerRow + 1; r < raw.length; r++) {
         const row = raw[r]; if (!row) continue;
-        if (clean(row[colUrl]).startsWith('/') && clean(row[colComp]??'').toLowerCase().includes('variation')) { startRow = r; break; }
+        const cc2 = clean(row[colComp]??'').toLowerCase();
+        if (clean(row[colUrl]).startsWith('/') && (cc2.includes('variation') || cc2 === '% change')) { startRow = r; break; }
       }
     }
 
     function parsePeriodDate(label) {
-      const months = {'jan':0,'fev':1,'fév':1,'mar':2,'avr':3,'mai':4,'juin':5,'juil':6,'jul':6,'aou':7,'aoû':7,'sep':8,'oct':9,'nov':10,'dec':11,'déc':11};
+      const months = {'jan':0,'fev':1,'fév':1,'feb':1,'mar':2,'avr':3,'apr':3,'mai':4,'may':4,'juin':5,'jun':5,'juil':6,'jul':6,'aou':7,'aoû':7,'aug':7,'sep':8,'oct':9,'nov':10,'dec':11,'déc':11};
       const l = label.toLowerCase(); const ym = l.match(/(\d{4})/); const year = ym ? parseInt(ym[1]) : 2025;
       for (const [m, idx] of Object.entries(months)) { if (l.includes(m)) return new Date(year, idx, 1); }
       return null;
@@ -622,7 +623,7 @@ function mergeAndParse(rawA, rawB, filename) {
       const row = raw[i]; if (!row) { i++; continue; }
       const urlVal = clean(row[colUrl]);
       const cc = clean(row[colComp] ?? '');
-      if (urlVal.startsWith('/') && cc.toLowerCase().includes('variation')) {
+      if (urlVal.startsWith('/') && (cc.toLowerCase().includes('variation') || cc === '% change')) {
         const rowA = raw[i+1], rowB = raw[i+2];
         if (!rowA || !rowB) { i++; continue; }
         const rowP1 = swapped ? rowB : rowA;
@@ -806,12 +807,13 @@ function detectFormat(raw) {
     }
   }
 
-  // If colComp not found in header, search for it in data rows (row below header with "Variation")
+  // If colComp not found in header, search for it in data rows (row below header with "Variation" or "% change")
   if (colComp === -1) {
     const testRow = raw[headerRow + 1];
     if (testRow) {
       for (let c = 0; c < testRow.length; c++) {
-        if (clean(testRow[c]).toLowerCase().includes('variation')) { colComp = c; break; }
+        const v = clean(testRow[c]).toLowerCase();
+        if (v.includes('variation') || v === '% change') { colComp = c; break; }
       }
     }
     // Ultimate fallback
@@ -842,11 +844,12 @@ function detectFormat(raw) {
   if (colVues === -1) colVues = -1; // may not have Vues (event-only file)
   if (colEvt === -1 && allEvtCols.length === 0) colEvt = -1;
 
-  // Detect flat format: no "Comparaison de dates" column found in header
+  // Detect flat format: no "Comparaison de dates" / "Date Comparison" column found in header
   const isFlat = colComp === -1 || (colComp >= 0 && (() => {
-    // Double-check: look for "Variation" in first data rows
+    // Double-check: look for "Variation" or "% change" in first data rows
     for (let r = headerRow + 1; r < Math.min(raw.length, headerRow + 5); r++) {
-      if (raw[r] && clean(raw[r][colComp] ?? '').toLowerCase().includes('variation')) return false;
+      const v = raw[r] ? clean(raw[r][colComp] ?? '').toLowerCase() : '';
+      if (v.includes('variation') || v === '% change') return false;
     }
     return true;
   })());
@@ -888,9 +891,9 @@ function parseGA4Export(raw, filename) {
     const c0 = clean(row[colUrl]);
     const c1 = clean(row[colComp] ?? '');
 
-    if (!c0 && c1 && toNum(row[colVues]) > 100) {
+    if (!c0 && c1 && toNum(row[colVues]) > 0) {
       const lbl = c1.toLowerCase();
-      const hasMonth = ['jan','fev','fév','mar','avr','mai','juin','juil','aou','aoû','sep','oct','nov','dec','déc'].some(m => lbl.includes(m));
+      const hasMonth = ['jan','fev','fév','feb','mar','avr','apr','mai','may','juin','jun','juil','jul','aou','aoû','aug','sep','oct','nov','dec','déc'].some(m => lbl.includes(m));
       if (hasMonth) {
         const v = toNum(row[colVues]);
         const e = allEvtCols.reduce((s, ec) => s + toNum(row[ec.col]), 0);
@@ -904,7 +907,7 @@ function parseGA4Export(raw, filename) {
       }
     }
 
-    if (c0.startsWith('/') && c1.toLowerCase().includes('variation') && startRow === -1) {
+    if (c0.startsWith('/') && (c1.toLowerCase().includes('variation') || c1 === '% change') && startRow === -1) {
       startRow = r;
     }
   }
@@ -915,7 +918,7 @@ function parseGA4Export(raw, filename) {
       if (!row) continue;
       const c0 = clean(row[colUrl]);
       const c1 = clean(row[colComp] ?? '');
-      if (c0.startsWith('/') && c1.toLowerCase().includes('variation')) { startRow = r; break; }
+      if (c0.startsWith('/') && (c1.toLowerCase().includes('variation') || c1 === '% change')) { startRow = r; break; }
     }
   }
 
@@ -928,7 +931,7 @@ function parseGA4Export(raw, filename) {
   // ── Ensure P1 = older period, P2 = newer period ──────────────────────────
   // GA4 can export periods in either order. Parse dates to detect and swap.
   function parsePeriodDate(label) {
-    const months = {'jan':0,'fev':1,'fév':1,'mar':2,'avr':3,'mai':4,'juin':5,'juil':6,'jul':6,'aou':7,'aoû':7,'sep':8,'oct':9,'nov':10,'dec':11,'déc':11};
+    const months = {'jan':0,'fev':1,'fév':1,'feb':1,'mar':2,'avr':3,'apr':3,'mai':4,'may':4,'juin':5,'jun':5,'juil':6,'jul':6,'aou':7,'aoû':7,'aug':7,'sep':8,'oct':9,'nov':10,'dec':11,'déc':11};
     const l = label.toLowerCase();
     const yearMatch = l.match(/(\d{4})/);
     const year = yearMatch ? parseInt(yearMatch[1]) : 2025;
@@ -959,7 +962,7 @@ function parseGA4Export(raw, filename) {
 
     const urlVal = clean(row[colUrl]);
     const labelCol = clean(row[colComp] ?? '');
-    const isVariation = urlVal.startsWith('/') && labelCol.toLowerCase().includes('variation');
+    const isVariation = urlVal.startsWith('/') && (labelCol.toLowerCase().includes('variation') || labelCol === '% change');
 
     if (isVariation) {
       const rowA = raw[i + 1]; // first data row in file
